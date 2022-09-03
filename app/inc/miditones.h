@@ -17,10 +17,10 @@ public:
     void playScore(const uint8_t *inputScore);
     void stopScore();
     void tune_delay(uint32_t msec);
-    //inline float convertMidiNoteToFreq(uint32_t midiNumber) {return freqOneOctave[midiNumber % 12] * (float)(1 << (uint32_t)(midiNumber / 12));}
     inline void startPlaying();
     inline bool isPlaying() { return tune_playing; }
-    void stepScore();
+    inline void setNoteAdjust(int8_t noteAdj) { noteAdjust = noteAdj; }
+    void stepScore();    
 
     // static compilation virtual:
     inline void noteOff(uint8_t chan);
@@ -34,9 +34,10 @@ public:
 private:
     bool tune_playing = false;
     bool volume_present = false;
+    int8_t noteAdjust = 0;
     uint8_t score_start = 0;
     uint8_t* score;
-    uint32_t score_cursor;    
+    uint32_t score_cursor;  
 };
 
 template <typename T>
@@ -178,7 +179,7 @@ void PlayTune<T>::stepScore()
             printf("noteOn: %d, chan: %d\r\n", note, chan);    
 			
             //mutexTryEnter();
-            noteOn(chan, note);
+            noteOn(chan, note + noteAdjust);
             //mutexExit();
 
         }

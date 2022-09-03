@@ -28,7 +28,7 @@ static void TIM0_Init(void);
 
 void Error_Handler(void);
 
-SemaphoreHandle_t xSemaphoreGetOPLL;
+SemaphoreHandle_t xSemaphoreWaitForMiditones;
 SemaphoreHandle_t xSemaphoreBufferEmptyFlag;
 
 emu2413driver* _OPLL_ptr = nullptr;
@@ -46,11 +46,11 @@ int main(void)
 
     vPortDefineHeapRegions( xHeapRegions );
 
-    xSemaphoreGetOPLL = xSemaphoreCreateBinary();
+    xSemaphoreWaitForMiditones = xSemaphoreCreateBinary();
     xSemaphoreBufferEmptyFlag = xSemaphoreCreateBinary();
 
-    xTaskCreate(task1_handle, "OPLL_task", 512, NULL, 35, &htask1);
-    xTaskCreate(task2_handle, "mdt_task", 512, NULL, 37, &htask2);
+    xTaskCreate(task1_handle, "OPLL_task", 512, NULL, 37, &htask1);
+    xTaskCreate(task2_handle, "mdt_task", 512, NULL, 35, &htask2);
 
     vTaskStartScheduler();
 
@@ -63,27 +63,26 @@ void task1_handle(void *p)
 
     _OPLL_ptr = &_OPLL;
 
-    xSemaphoreGive(xSemaphoreGetOPLL);
-
     printf("task1 starting!\r\n");
     printf("starting dma!\r\n");
 
     HAL_I2S_Transmit_DMA(&hi2s, (uint32_t *)tx_buf, I2S_BUFFER_SIZE * 2);
 
-    xSemaphoreGive(xSemaphoreGetOPLL);
+    _OPLL.writeReg(0x30, 0x30);
+    _OPLL.writeReg(0x31, 0x30); 
+    _OPLL.writeReg(0x32, 0x30);
+    _OPLL.writeReg(0x33, 0x30);
+    _OPLL.writeReg(0x34, 0x30);
+    _OPLL.writeReg(0x35, 0x30);
+    _OPLL.writeReg(0x36, 0x30);
+    // Adjust the MIDI notes by how many semitones - in this case it is 2 (because of the lack of resampling steps in OPLL_Calc):
+    _OPLL.setNoteAdjust(2);
+    //_OPLL.writeReg(0x10, 0x01); /* set F-Number(L). */
+    //_OPLL.writeReg(0x20, 0x15); /* set BLK & F-Number(H) and
+    //                             /* keyon. */
 
-    _OPLL.writeReg(0x30, 0xb0);
-    _OPLL.writeReg(0x31, 0xb0); 
-    _OPLL.writeReg(0x32, 0xb0);
-    _OPLL.writeReg(0x33, 0xb0);
-    _OPLL.writeReg(0x34, 0xb0);
-    _OPLL.writeReg(0x35, 0xb0);
-    _OPLL.writeReg(0x36, 0xb0);
-    // _OPLL.writeReg(0x10, 0x80); /* set F-Number(L). */
-    // _OPLL.writeReg(0x20, 0x15); /* set BLK & F-Number(H) and
-    //                              /* keyon. */
-
-    //_OPLL.startPlaying();
+    // Wait for Miditones task to start before playing:
+    xSemaphoreTake(xSemaphoreWaitForMiditones, portMAX_DELAY);
 
     while (1)
     {
@@ -94,22 +93,19 @@ void task1_handle(void *p)
 
 void task2_handle(void *p)
 {
-   // Wait for task1 to get the OPLL pointer first!
    printf("task2 starting!\r\n");
-   printf("waiting for task1 to get OPLL ptr!\r\n");
-   xSemaphoreTake(xSemaphoreGetOPLL, portMAX_DELAY);
 
    configASSERT(_OPLL_ptr != nullptr);
-
-   xSemaphoreTake(xSemaphoreGetOPLL, portMAX_DELAY);
 
    printf("run stepscore now!\r\n");
 
    _OPLL_ptr->startPlaying();
 
+   xSemaphoreGive(xSemaphoreWaitForMiditones);
+
    while(1)
    {
-        _OPLL_ptr->isPlaying() ? _OPLL_ptr->stepScore() : vTaskSuspend(NULL);
+        _OPLL_ptr->isPlaying() ? _OPLL_ptr->stepScore() : vTaskSuspend(NULL);        
    }
 }
 
